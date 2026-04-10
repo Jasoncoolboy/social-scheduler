@@ -1,21 +1,20 @@
-export default function StatsCard({ label, value, icon: Icon, color = "brand" }) {
+export default function StatsCard({ label, value, icon: Icon, color = "gray" }) {
   const colorMap = {
-    brand:  "text-brand-500 bg-brand-500/10",
-    blue:   "text-blue-400 bg-blue-400/10",
-    green:  "text-green-400 bg-green-400/10",
-    red:    "text-red-400 bg-red-400/10",
-    gray:   "text-gray-400 bg-gray-400/10",
+    gray:  "text-gray-500",
+    blue:  "text-blue-500",
+    green: "text-green-500",
+    red:   "text-red-500",
   }
 
   return (
-    <div className="card flex items-center gap-4">
-      <div className={`p-3 rounded-xl ${colorMap[color]}`}>
-        <Icon size={22} />
+    <div className="card">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+          {label}
+        </span>
+        <Icon size={16} className={colorMap[color]} />
       </div>
-      <div>
-        <p className="text-2xl font-bold text-white">{value ?? "—"}</p>
-        <p className="text-sm text-gray-500">{label}</p>
-      </div>
+      <p className="text-2xl font-semibold text-gray-900">{value ?? "0"}</p>
     </div>
   )
 }

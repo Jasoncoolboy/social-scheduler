@@ -9,5 +9,9 @@ export const loginInstagram = (data) =>
 export const verifyCode = (data) =>
   api.post("/api/accounts/verify", data).then((r) => r.data)
 
+// ← NEW: for when user approved challenge in Instagram app
+export const retryAfterChallenge = (ig_username) =>
+  api.post("/api/accounts/retry-challenge", { ig_username }).then((r) => r.data)
+
 export const deleteAccount = (id) =>
   api.delete(`/api/accounts/${id}`).then((r) => r.data)

@@ -3,7 +3,6 @@ import { useNavigate, Link } from "react-router-dom"
 import { useMutation } from "@tanstack/react-query"
 import { register } from "../api/auth"
 import toast from "react-hot-toast"
-import { Camera } from "lucide-react"
 
 export default function Register() {
   const navigate = useNavigate()
@@ -12,7 +11,7 @@ export default function Register() {
   const mutation = useMutation({
     mutationFn: () => register(form),
     onSuccess: () => {
-      toast.success("Account created! Please sign in.")
+      toast.success("Account created!")
       navigate("/login")
     },
     onError: (e) =>
@@ -20,14 +19,14 @@ export default function Register() {
   })
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-brand-600 rounded-2xl mb-4">
-            <Camera size={28} className="text-white" />
+          <div className="inline-flex items-center justify-center w-10 h-10 bg-gray-900 rounded-xl mb-4">
+            <span className="text-white text-lg">📅</span>
           </div>
-          <h1 className="text-2xl font-bold text-white">Create Account</h1>
-          <p className="text-gray-500 mt-1">Start scheduling your posts</p>
+          <h1 className="text-xl font-semibold text-gray-900">Create account</h1>
+          <p className="text-sm text-gray-500 mt-1">Get started for free</p>
         </div>
 
         <div className="card">
@@ -43,6 +42,7 @@ export default function Register() {
                 value={form.username}
                 onChange={(e) => setForm({ ...form, username: e.target.value })}
                 required
+                autoFocus
               />
             </div>
             <div>
@@ -63,7 +63,9 @@ export default function Register() {
                 type="password"
                 placeholder="••••••••"
                 value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, password: e.target.value })
+                }
                 required
                 minLength={6}
               />
@@ -72,16 +74,19 @@ export default function Register() {
             <button
               type="submit"
               disabled={mutation.isPending}
-              className="btn-primary w-full mt-2"
+              className="btn-primary w-full"
             >
-              {mutation.isPending ? "Creating..." : "Create Account"}
+              {mutation.isPending ? "Creating..." : "Create account"}
             </button>
           </form>
 
-          <p className="text-center text-sm text-gray-500 mt-4">
+          <p className="text-center text-xs text-gray-400 mt-4">
             Already have an account?{" "}
-            <Link to="/login" className="text-brand-500 hover:text-brand-400">
-              Sign In
+            <Link
+              to="/login"
+              className="text-gray-900 font-medium hover:underline"
+            >
+              Sign in
             </Link>
           </p>
         </div>

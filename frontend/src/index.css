@@ -3,39 +3,51 @@
 @tailwind utilities;
 
 @layer base {
+  * {
+    @apply border-border;
+  }
   body {
-    @apply bg-gray-950 text-gray-100 font-sans antialiased;
+    @apply bg-white text-gray-900 font-sans antialiased;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-brand-600 hover:bg-brand-700 text-white font-medium
-           px-4 py-2 rounded-lg transition-colors duration-200
-           disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-gray-900 hover:bg-gray-700 text-white text-sm font-medium
+           px-4 py-2 rounded-lg transition-all duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed
+           flex items-center justify-center gap-2;
   }
   .btn-secondary {
-    @apply bg-gray-800 hover:bg-gray-700 text-gray-100 font-medium
-           px-4 py-2 rounded-lg transition-colors duration-200;
+    @apply bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium
+           px-4 py-2 rounded-lg border border-gray-200
+           transition-all duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed
+           flex items-center justify-center gap-2;
   }
   .btn-danger {
-    @apply bg-red-600 hover:bg-red-700 text-white font-medium
-           px-4 py-2 rounded-lg transition-colors duration-200;
+    @apply bg-white hover:bg-red-50 text-red-600 text-sm font-medium
+           px-4 py-2 rounded-lg border border-red-200
+           transition-all duration-150;
   }
   .card {
-    @apply bg-gray-900 border border-gray-800 rounded-xl p-6;
+    @apply bg-white border border-gray-100 rounded-xl p-6 shadow-sm;
   }
   .input {
-    @apply w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5
-           text-gray-100 placeholder-gray-500
-           focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent
-           transition-all duration-200;
+    @apply w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5
+           text-gray-900 placeholder-gray-400 text-sm
+           focus:outline-none focus:ring-2 focus:ring-gray-900/10
+           focus:border-gray-400
+           transition-all duration-150;
   }
   .label {
-    @apply block text-sm font-medium text-gray-300 mb-1.5;
+    @apply block text-sm font-medium text-gray-700 mb-1.5;
   }
-  .badge-draft     { @apply bg-gray-700 text-gray-300; }
-  .badge-scheduled { @apply bg-blue-900 text-blue-300; }
-  .badge-published { @apply bg-green-900 text-green-300; }
-  .badge-failed    { @apply bg-red-900 text-red-300; }
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  .badge-draft     { @apply bg-gray-100 text-gray-600; }
+  .badge-scheduled { @apply bg-blue-50 text-blue-600; }
+  .badge-published { @apply bg-green-50 text-green-600; }
+  .badge-failed    { @apply bg-red-50 text-red-600; }
 }

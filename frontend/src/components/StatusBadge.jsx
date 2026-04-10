@@ -10,7 +10,7 @@ const statusConfig = {
 export default function StatusBadge({ status }) {
   const config = statusConfig[status] || statusConfig.draft
   return (
-    <span className={clsx("text-xs font-medium px-2.5 py-1 rounded-full", config.cls)}>
+    <span className={clsx("badge", config.cls)}>
       {config.label}
     </span>
   )

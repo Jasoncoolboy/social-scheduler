@@ -9,10 +9,19 @@ from app.schemas.instagram_account import (
     InstagramAccountResponse,
     VerificationCodeRequest,
 )
-from app.services.instagram_service import login_instagram, logout_instagram
+from app.services.instagram_service import (
+    login_instagram,
+    logout_instagram,
+    retry_after_challenge,
+)
 from app.dependencies import get_current_user
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
+
+
+class RetryRequest(BaseModel):
+    ig_username: str
 
 
 @router.post("/login")
@@ -38,13 +47,32 @@ def instagram_verify(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Submit 2FA / challenge verification code."""
     result = login_instagram(
         ig_username=data.ig_username,
-        ig_password="",  # not needed for verification
+        ig_password="",
         db=db,
         user_id=current_user.id,
         verification_code=data.code,
+    )
+    if result["status"] == "error":
+        raise HTTPException(400, result["message"])
+    return result
+
+
+@router.post("/retry-challenge")
+def retry_challenge(
+    data: RetryRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Called when user approved Instagram challenge in app
+    without needing a code — just retries the session.
+    """
+    result = retry_after_challenge(
+        ig_username=data.ig_username,
+        db=db,
+        user_id=current_user.id,
     )
     if result["status"] == "error":
         raise HTTPException(400, result["message"])

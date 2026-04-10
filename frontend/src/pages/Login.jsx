@@ -4,7 +4,7 @@ import { useMutation } from "@tanstack/react-query"
 import { login, getMe } from "../api/auth"
 import { useAuthStore } from "../store/authStore"
 import toast from "react-hot-toast"
-import { Camera, Eye, EyeOff } from "lucide-react"
+import { Eye, EyeOff } from "lucide-react"
 
 export default function Login() {
   const navigate = useNavigate()
@@ -14,15 +14,9 @@ export default function Login() {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      // Step 1 — get token
       const { access_token } = await login(form.username, form.password)
-
-      // Step 2 — save token to localStorage FIRST before calling getMe
       localStorage.setItem("access_token", access_token)
-
-      // Step 3 — now getMe will have token available in axios interceptor
       const user = await getMe()
-
       return { access_token, user }
     },
     onSuccess: ({ access_token, user }) => {
@@ -30,34 +24,31 @@ export default function Login() {
       toast.success(`Welcome back, ${user.username}!`)
       navigate("/")
     },
-    onError: (e) => {
-      // Clear any partial token on error
+    onError: () => {
       localStorage.removeItem("access_token")
-      toast.error(
-        e?.response?.data?.detail || "Invalid username or password"
-      )
+      toast.error("Invalid username or password")
     },
   })
 
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    mutation.mutate()
-  }
-
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-sm">
+        {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-brand-600 rounded-2xl mb-4">
-            <Camera size={28} className="text-white" />
+          <div className="inline-flex items-center justify-center w-10 h-10 bg-gray-900 rounded-xl mb-4">
+            <span className="text-white text-lg">📅</span>
           </div>
-          <h1 className="text-2xl font-bold text-white">SocialScheduler</h1>
-          <p className="text-gray-500 mt-1">Sign in to your account</p>
+          <h1 className="text-xl font-semibold text-gray-900">Sign in</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Schedule your Instagram content
+          </p>
         </div>
 
         <div className="card">
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form
+            onSubmit={(e) => { e.preventDefault(); mutation.mutate() }}
+            className="space-y-4"
+          >
             <div>
               <label className="label">Username</label>
               <input
@@ -66,6 +57,7 @@ export default function Login() {
                 value={form.username}
                 onChange={(e) => setForm({ ...form, username: e.target.value })}
                 required
+                autoFocus
               />
             </div>
 
@@ -85,9 +77,9 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => setShowPw(!showPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
-                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
             </div>
@@ -95,15 +87,18 @@ export default function Login() {
             <button
               type="submit"
               disabled={mutation.isPending}
-              className="btn-primary w-full mt-2"
+              className="btn-primary w-full"
             >
-              {mutation.isPending ? "Signing in..." : "Sign In"}
+              {mutation.isPending ? "Signing in..." : "Sign in"}
             </button>
           </form>
 
-          <p className="text-center text-sm text-gray-500 mt-4">
-            Don't have an account?{" "}
-            <Link to="/register" className="text-brand-500 hover:text-brand-400">
+          <p className="text-center text-xs text-gray-400 mt-4">
+            No account?{" "}
+            <Link
+              to="/register"
+              className="text-gray-900 font-medium hover:underline"
+            >
               Register
             </Link>
           </p>
