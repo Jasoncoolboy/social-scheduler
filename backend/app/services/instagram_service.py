@@ -8,8 +8,6 @@ from instagrapi.exceptions import (
     ChallengeRequired,
     TwoFactorRequired,
     BadPassword,
-    SelectContactPointRecoveryForm,
-    RecaptchaChallengeForm,
 )
 from sqlalchemy.orm import Session
 from app.models.instagram_account import InstagramAccount
@@ -18,20 +16,72 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 _clients: dict[int, Client] = {}
+_pending_clients: dict[str, tuple] = {}
 
 
-def _challenge_code_handler(username, choice):
+def _detect_challenge_type(cl: Client) -> str:
     """
-    Called by instagrapi when challenge requires selecting contact point.
-    Returns 0 to select email, 1 for phone.
+    Detect what kind of challenge Instagram is asking for.
+    Returns: 'code' | 'approve' | 'unknown'
     """
-    logger.info(f"Challenge choice for {username}: {choice}")
-    return 0  # select email by default
+    try:
+        last = cl.last_json or {}
+        logger.info(f"Challenge last_json: {last}")
+
+        step_name = last.get("step_name", "")
+        challenge = last.get("challenge", {})
+        api_path = challenge.get("api_path", "")
+
+        # Instagram sends a push notification to the app — no code needed
+        if step_name in ("select_verify_method", "delta_login_review"):
+            return "approve"
+
+        # Instagram will send a code via SMS or email
+        if step_name in ("verify_code", "submit_phone", "verify_email"):
+            return "code"
+
+        # Check api_path for hints
+        if "review" in api_path.lower():
+            return "approve"
+        if "code" in api_path.lower() or "verify" in api_path.lower():
+            return "code"
+
+        # Check bloks data (newer Instagram API format)
+        bloks = last.get("challenge", {})
+        if "url" in bloks:
+            url = bloks["url"]
+            if "review" in url:
+                return "approve"
+            if "code" in url or "verify" in url:
+                return "code"
+
+        return "approve"  # default to approve if unsure
+
+    except Exception as e:
+        logger.warning(f"Could not detect challenge type: {e}")
+        return "approve"
 
 
-def _change_password_handler(username):
-    """Called if Instagram requires password change — we skip."""
-    return None
+def validate_all_sessions(db: Session):
+    """Validate all saved sessions on startup."""
+    accounts = db.query(InstagramAccount).filter(
+        InstagramAccount.session_data.isnot(None),
+        InstagramAccount.is_active == True,
+    ).all()
+
+    for account in accounts:
+        try:
+            cl = Client()
+            cl.delay_range = [1, 2]
+            session = json.loads(account.session_data)
+            cl.set_settings(session)
+            cl.get_timeline_feed()
+            _clients[account.id] = cl
+            logger.info(f" Session valid: @{account.ig_username}")
+        except Exception as e:
+            logger.warning(f" Session expired: @{account.ig_username} — {e}")
+            account.is_active = False
+            db.commit()
 
 
 def _get_client(account: InstagramAccount) -> Client:
@@ -40,8 +90,6 @@ def _get_client(account: InstagramAccount) -> Client:
 
     cl = Client()
     cl.delay_range = [2, 5]
-    cl.challenge_code_handler = _challenge_code_handler
-    cl.change_password_handler = _change_password_handler
 
     if account.session_data:
         try:
@@ -51,9 +99,9 @@ def _get_client(account: InstagramAccount) -> Client:
             _clients[account.id] = cl
             return cl
         except Exception:
-            logger.warning(f"Session invalid for {account.ig_username}")
+            logger.warning(f"Session invalid for @{account.ig_username}")
 
-    raise LoginRequired("No valid session, please login again")
+    raise LoginRequired("Session expired — please re-login")
 
 
 def login_instagram(
@@ -65,64 +113,83 @@ def login_instagram(
 ) -> dict:
     cl = Client()
     cl.delay_range = [2, 5]
-    cl.challenge_code_handler = _challenge_code_handler
-    cl.change_password_handler = _change_password_handler
 
     try:
         if verification_code:
-            cl.login(
-                ig_username,
-                ig_password,
-                verification_code=verification_code
-            )
+            cl.login(ig_username, ig_password, verification_code=verification_code)
         else:
             cl.login(ig_username, ig_password)
 
-        return _save_session(cl, ig_username, ig_password, db, user_id)
+        return _save_session(cl, ig_username, db, user_id)
 
     except BadPassword:
-        return {"status": "error", "message": "Invalid Instagram password"}
+        return {"status": "error", "message": "Incorrect Instagram password"}
 
     except TwoFactorRequired:
-        # Store the partial client so we can complete login later
         _pending_clients[ig_username] = (cl, ig_password)
+        logger.info(f"2FA required for @{ig_username}")
         return {
             "status": "two_factor_required",
-            "message": "Two-factor authentication required",
+            "message": "Enter the 6-digit code from your authenticator app or SMS",
         }
 
     except ChallengeRequired:
-        # Try to resolve challenge automatically
+        challenge_type = _detect_challenge_type(cl)
+        logger.info(f"Challenge type for @{ig_username}: {challenge_type}")
+
+        # Try auto-resolve first
         try:
-            logger.info(f"Attempting to resolve challenge for {ig_username}")
             cl.challenge_resolve(cl.last_json)
-            # If resolved, save session
-            return _save_session(cl, ig_username, ig_password, db, user_id)
-        except Exception as challenge_err:
-            logger.warning(f"Auto challenge resolve failed: {challenge_err}")
-            # Store client for manual resolution
-            _pending_clients[ig_username] = (cl, ig_password)
+            # If auto-resolve worked, try saving session
+            return _save_session(cl, ig_username, db, user_id)
+        except Exception as e:
+            logger.info(f"Auto-resolve failed ({e}), storing pending client")
+
+        _pending_clients[ig_username] = (cl, ig_password)
+
+        if challenge_type == "code":
+            return {
+                "status": "challenge_code_required",
+                "message": "Instagram sent a verification code to your email or phone",
+                "ig_username": ig_username,
+                "challenge_type": "code",
+            }
+        else:
             return {
                 "status": "challenge_required",
-                "message": "Instagram requires verification. Check your Instagram app, email, or SMS for an approval notification. Once approved, click 'Try Again'.",
+                "message": "Instagram sent a login approval to your app",
                 "ig_username": ig_username,
+                "challenge_type": "approve",
             }
 
-    except SelectContactPointRecoveryForm:
-        _pending_clients[ig_username] = (cl, ig_password)
-        return {
-            "status": "challenge_required",
-            "message": "Instagram requires contact point verification. Check your email or SMS.",
-            "ig_username": ig_username,
-        }
-
     except Exception as e:
-        logger.error(f"Instagram login error: {e}")
+        logger.error(f"Login error for @{ig_username}: {e}")
         return {"status": "error", "message": str(e)}
 
 
-# Store pending (mid-challenge) clients
-_pending_clients: dict[str, tuple] = {}
+def submit_challenge_code(
+    ig_username: str,
+    code: str,
+    db: Session,
+    user_id: int,
+) -> dict:
+    """Submit a verification code sent by Instagram via SMS/email."""
+    if ig_username not in _pending_clients:
+        return {
+            "status": "error",
+            "message": "No pending login — please try connecting again",
+        }
+
+    cl, ig_password = _pending_clients[ig_username]
+
+    try:
+        cl.challenge_send_security_code(code)
+        result = _save_session(cl, ig_username, db, user_id)
+        _pending_clients.pop(ig_username, None)
+        return result
+    except Exception as e:
+        logger.error(f"Challenge code error for @{ig_username}: {e}")
+        return {"status": "error", "message": f"Invalid code: {str(e)}"}
 
 
 def retry_after_challenge(
@@ -130,48 +197,45 @@ def retry_after_challenge(
     db: Session,
     user_id: int,
 ) -> dict:
-    """
-    Called when user has approved challenge in Instagram app
-    and clicks 'Try Again' — no code needed.
-    """
+    """Retry after user approved login in Instagram app."""
     if ig_username not in _pending_clients:
         return {
             "status": "error",
-            "message": "No pending login found. Please try connecting again.",
+            "message": "No pending login — please try connecting again",
         }
 
     cl, ig_password = _pending_clients[ig_username]
 
+    # Test if challenge was approved
     try:
-        # Try to get timeline — if challenge was approved, this works
         cl.get_timeline_feed()
-        result = _save_session(cl, ig_username, ig_password, db, user_id)
-        del _pending_clients[ig_username]
+        result = _save_session(cl, ig_username, db, user_id)
+        _pending_clients.pop(ig_username, None)
         return result
     except Exception:
         pass
 
     # Try re-login
     try:
-        cl.login(ig_username, ig_password)
-        result = _save_session(cl, ig_username, ig_password, db, user_id)
-        del _pending_clients[ig_username]
+        cl2 = Client()
+        cl2.delay_range = [2, 5]
+        cl2.login(ig_username, ig_password)
+        result = _save_session(cl2, ig_username, db, user_id)
+        _pending_clients.pop(ig_username, None)
         return result
     except Exception as e:
         return {
             "status": "error",
-            "message": f"Still blocked: {str(e)}. Try again in a few minutes.",
+            "message": "Still blocked — approve in Instagram app then try again",
         }
 
 
 def _save_session(
     cl: Client,
     ig_username: str,
-    ig_password: str,
     db: Session,
     user_id: int,
 ) -> dict:
-    """Save Instagram session to database."""
     user_info = cl.account_info()
     session_data = json.dumps(cl.get_settings())
 
@@ -239,9 +303,9 @@ def publish_post(account: InstagramAccount, post) -> dict:
         if post.post_type == "story":
             media = media_files[0]
             if media.media_type == "video":
-                cl.video_upload_to_story(media.file_path, caption=caption)
+                cl.video_upload_to_story(media.file_path)
             else:
-                cl.photo_upload_to_story(media.file_path, caption=caption)
+                cl.photo_upload_to_story(media.file_path)
         elif post.post_type == "carousel":
             paths = [Path(m.file_path) for m in media_files]
             cl.album_upload(paths, caption=caption)
@@ -255,7 +319,7 @@ def publish_post(account: InstagramAccount, post) -> dict:
         return {"status": "success"}
 
     except LoginRequired:
-        return {"status": "error", "message": "Session expired, please re-login"}
+        return {"status": "error", "message": "Session expired — please re-login"}
     except Exception as e:
         logger.error(f"Publish error for post {post.id}: {e}")
         return {"status": "error", "message": str(e)}

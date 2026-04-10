@@ -3,9 +3,6 @@
 @tailwind utilities;
 
 @layer base {
-  * {
-    @apply border-border;
-  }
   body {
     @apply bg-white text-gray-900 font-sans antialiased;
   }
@@ -28,7 +25,8 @@
   .btn-danger {
     @apply bg-white hover:bg-red-50 text-red-600 text-sm font-medium
            px-4 py-2 rounded-lg border border-red-200
-           transition-all duration-150;
+           transition-all duration-150
+           flex items-center justify-center gap-2;
   }
   .card {
     @apply bg-white border border-gray-100 rounded-xl p-6 shadow-sm;

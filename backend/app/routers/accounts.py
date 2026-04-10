@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+from pydantic import BaseModel
 from app.database import get_db
 from app.models.user import User
 from app.models.instagram_account import InstagramAccount
@@ -13,15 +14,20 @@ from app.services.instagram_service import (
     login_instagram,
     logout_instagram,
     retry_after_challenge,
+    submit_challenge_code,
 )
 from app.dependencies import get_current_user
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
 
 class RetryRequest(BaseModel):
     ig_username: str
+
+
+class ChallengeCodeRequest(BaseModel):
+    ig_username: str
+    code: str
 
 
 @router.post("/login")
@@ -47,6 +53,7 @@ def instagram_verify(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Submit 2FA code from authenticator app."""
     result = login_instagram(
         ig_username=data.ig_username,
         ig_password="",
@@ -59,16 +66,31 @@ def instagram_verify(
     return result
 
 
+@router.post("/challenge-code")
+def submit_challenge(
+    data: ChallengeCodeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Submit code sent by Instagram via SMS or email."""
+    result = submit_challenge_code(
+        ig_username=data.ig_username,
+        code=data.code,
+        db=db,
+        user_id=current_user.id,
+    )
+    if result["status"] == "error":
+        raise HTTPException(400, result["message"])
+    return result
+
+
 @router.post("/retry-challenge")
 def retry_challenge(
     data: RetryRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Called when user approved Instagram challenge in app
-    without needing a code — just retries the session.
-    """
+    """Called after user approved login in Instagram app."""
     result = retry_after_challenge(
         ig_username=data.ig_username,
         db=db,
@@ -107,7 +129,6 @@ def disconnect_account(
     )
     if not account:
         raise HTTPException(404, "Account not found")
-
     logout_instagram(account_id)
     db.delete(account)
     db.commit()
