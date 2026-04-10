@@ -14,8 +14,15 @@ export default function Login() {
 
   const mutation = useMutation({
     mutationFn: async () => {
+      // Step 1 — get token
       const { access_token } = await login(form.username, form.password)
+
+      // Step 2 — save token to localStorage FIRST before calling getMe
+      localStorage.setItem("access_token", access_token)
+
+      // Step 3 — now getMe will have token available in axios interceptor
       const user = await getMe()
+
       return { access_token, user }
     },
     onSuccess: ({ access_token, user }) => {
@@ -23,7 +30,13 @@ export default function Login() {
       toast.success(`Welcome back, ${user.username}!`)
       navigate("/")
     },
-    onError: () => toast.error("Invalid username or password"),
+    onError: (e) => {
+      // Clear any partial token on error
+      localStorage.removeItem("access_token")
+      toast.error(
+        e?.response?.data?.detail || "Invalid username or password"
+      )
+    },
   })
 
   const handleSubmit = (e) => {
@@ -64,7 +77,9 @@ export default function Login() {
                   type={showPw ? "text" : "password"}
                   placeholder="••••••••"
                   value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, password: e.target.value })
+                  }
                   required
                 />
                 <button
