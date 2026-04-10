@@ -1,0 +1,53 @@
+# ── Option A: Docker (recommended) ──────────────────
+docker-compose up --build
+
+# ── Option B: Manual ────────────────────────────────
+
+# Terminal 1 — Backend
+cd backend
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+
+# Terminal 2 — Frontend
+cd frontend
+npm install
+npm run dev
+
+
+Service	URL
+Frontend App	http://localhost:5173
+Backend API	http://localhost:8000
+API Docs (Swagger)	http://localhost:8000/docs
+API Docs (ReDoc)	http://localhost:8000/redoc
+
+# Stop containers first
+docker-compose down
+
+# Rebuild with the fix
+docker-compose up --build
+
+
+# Only use --build when:
+
+docker-compose up --build   # 1. First time ever
+docker-compose up --build   # 2. Changed requirements.txt
+docker-compose up --build   # 3. Changed package.json
+docker-compose up --build   # 4. Changed Dockerfile
+docker-compose up --build   # 5. Something is broken and
+                            #    you want a clean rebuild
+
+# For everything else (daily code changes):
+docker-compose up           # ← no --build needed
+
+
+# If something is really broken and you want 100% fresh:
+
+# Stop and remove everything
+docker-compose down --volumes --rmi all
+
+# Then rebuild from scratch
+docker-compose up --build
+
+# ⚠️ This deletes cached layers, will be slow again
