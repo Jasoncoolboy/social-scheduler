@@ -31,7 +31,8 @@ export default function Settings() {
   const [pendingUser, setPendingUser] = useState("")  // ig_username mid-flow
   const [pendingFlowId, setPendingFlowId] = useState("")
   const [code, setCode]         = useState("")        // 2FA or challenge code
-  const [twoFaMethod, setTwoFaMethod] = useState("sms") // "sms" | "totp"
+  const [twoFaMethod, setTwoFaMethod] = useState("sms") // "sms" | "totp" | "whatsapp"
+  const [twoFaAvailableMethods, setTwoFaAvailableMethods] = useState([])
   const [twoFaHint, setTwoFaHint]     = useState("") // Phone number or app name
 
   const reset = () => {
@@ -41,8 +42,9 @@ export default function Settings() {
     setPendingFlowId("")
     setCode("")
     setShowPw(false)
-    setTwoFaMethod("sms")   // ← add
-    setTwoFaHint("")        // ← add
+    setTwoFaMethod("sms")
+    setTwoFaAvailableMethods([])
+    setTwoFaHint("")
   }
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -69,6 +71,7 @@ export default function Settings() {
       if (res.status === "two_factor_required") {
         setStep(STEP.TWO_FACTOR)
         setTwoFaMethod(res.method || "sms")
+        setTwoFaAvailableMethods(res.available_methods || [])
         setTwoFaHint(res.phone_hint || "")
         toast(res.message || "Enter your 2FA code", { icon: "🔐" })
         return
@@ -93,7 +96,12 @@ export default function Settings() {
 
   // ── 2FA (authenticator app code) ───────────────────────────────────────────
   const twoFaMutation = useMutation({
-    mutationFn: () => verifyCode({ ig_username: pendingUser, code, flow_id: pendingFlowId }),
+    mutationFn: () => verifyCode({
+      ig_username: pendingUser,
+      code,
+      flow_id: pendingFlowId,
+      method: twoFaMethod,
+    }),
     onSuccess: (res) => {
       if (res.status === "success") {
         toast.success("Account connected!")
@@ -353,7 +361,9 @@ export default function Settings() {
             <p className="text-xs font-medium text-blue-800">
               {twoFaMethod === "totp"
                 ? " Open your authenticator app"
-                : " Check your SMS or WhatsApp"}
+                : twoFaMethod === "whatsapp"
+                  ? " Check your WhatsApp message"
+                  : " Check your SMS message"}
             </p>
             {twoFaHint && (
               <p className="text-xs text-blue-600">
@@ -361,9 +371,27 @@ export default function Settings() {
               </p>
             )}
             <p className="text-xs text-blue-500 mt-1">
-              Enter the code quickly — it expires in 30 seconds
+              Enter the code quickly and submit once.
             </p>
           </div>
+
+          {twoFaAvailableMethods.length > 1 && (
+            <div>
+              <label className="label">Code Source</label>
+              <div className="flex gap-2">
+                {twoFaAvailableMethods.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setTwoFaMethod(m)}
+                    className={`btn-secondary ${twoFaMethod === m ? "ring-2 ring-gray-400" : ""}`}
+                  >
+                    {m === "totp" ? "Authenticator App" : m === "whatsapp" ? "WhatsApp" : "SMS"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="label">6-Digit Code</label>

@@ -152,12 +152,20 @@ def login_instagram(
         tfi  = last.get("two_factor_info", {})
         logger.info(f"TwoFactorRequired for @{ig_username} | tfi: {tfi}")
 
+        available_methods = []
+        if tfi.get("sms_two_factor_on"):
+            available_methods.append("sms")
+        if tfi.get("whatsapp_two_factor_on"):
+            available_methods.append("whatsapp")
+        if tfi.get("totp_two_factor_on"):
+            available_methods.append("totp")
+
         if tfi.get("totp_two_factor_on"):
             hint   = "Enter the code from your authenticator app"
             method = "totp"
         elif tfi.get("whatsapp_two_factor_on"):
             hint   = f"Enter the WhatsApp code sent to {tfi.get('obfuscated_phone_number_2', 'your phone')}"
-            method = "sms"
+            method = "whatsapp"
         else:
             hint   = f"Enter the SMS code sent to {tfi.get('obfuscated_phone_number_2', 'your phone')}"
             method = "sms"
@@ -179,6 +187,7 @@ def login_instagram(
             "ig_username": ig_username,
             "flow_id": flow_id,
             "method":      method,
+            "available_methods": available_methods,
             "phone_hint":  tfi.get("obfuscated_phone_number_2", ""),
         }
 
@@ -234,6 +243,7 @@ def submit_two_factor_code(
     db: Session,
     user_id: int,
     flow_id: Optional[str] = None,
+    method: Optional[str] = None,
 ) -> dict:
     pending = _get_pending(flow_id=flow_id, user_id=user_id, ig_username=ig_username)
     if not pending:
@@ -243,7 +253,6 @@ def submit_two_factor_code(
         }
 
     cl        = pending["client"]
-    password  = pending["password"]
     last_json = pending.get("last_json") or cl.last_json or {}
     pending_flow_id = pending.get("flow_id")
 
@@ -256,13 +265,23 @@ def submit_two_factor_code(
     two_factor_identifier = tfi.get("two_factor_identifier", "")
     device_id            = tfi.get("device_id", "")
 
-    # Pick verification method
-    if tfi.get("totp_two_factor_on"):
+    # Pick verification method from explicit user choice.
+    # API values: SMS=1, TOTP=3, WhatsApp=4
+    method_map = {
+        "sms": "1",
+        "totp": "3",
+        "whatsapp": "4",
+    }
+    requested_method = (method or "").strip().lower()
+
+    if requested_method:
+        verification_method = method_map.get(requested_method, "1")
+    elif tfi.get("totp_two_factor_on"):
         verification_method = "3"
     elif tfi.get("whatsapp_two_factor_on") and not tfi.get("sms_two_factor_on"):
         verification_method = "4"
     else:
-        verification_method = "1"  # SMS
+        verification_method = "1"
 
     logger.info(
         f"2FA method={verification_method} | "
@@ -306,46 +325,14 @@ def submit_two_factor_code(
         return saved    
 
     except Exception as e1:
-        logger.error(f"2FA attempt 1 failed for @{ig_username}: {e1}")
-
-    # ── Attempt 2: WhatsApp fallback ──────────────────────────────────────────
-    if tfi.get("whatsapp_two_factor_on") and verification_method != "4":
-        try:
-            data["verification_method"] = "4"
-            result = cl.private_request(
-                "accounts/two_factor_login/",
-                data,
-                login=True,
-            )
-            logger.info(f"2FA WhatsApp fallback success for @{ig_username}")
-            saved = _save_session(cl, ig_username, db, user_id)
-            if pending_flow_id:
-                _pending_clients.pop(pending_flow_id, None)
-            return saved
-        except Exception as e2:
-            logger.error(f"2FA WhatsApp fallback failed: {e2}")
-
-    # ── Attempt 3: fresh login with verification_code ─────────────────────────
-    try:
-        logger.info(f"2FA attempt 3 — fresh login with code for @{ig_username}")
-        cl3 = Client()
-        cl3.delay_range = [1, 3]
-        cl3.login(
-            username=ig_username,
-            password=password,
-            verification_code=clean_code,
-        )
-        saved = _save_session(cl3, ig_username, db, user_id)
-        if pending_flow_id:
-            _pending_clients.pop(pending_flow_id, None)
-        return saved
-
-    except Exception as e3:
-        logger.error(f"2FA attempt 3 failed for @{ig_username}: {e3}")
+        logger.error(f"2FA verification failed for @{ig_username}: {e1}")
         return {
             "status":  "error",
             "message": (
-                "Code rejected by Instagram. Tips:\n"
+                "Code rejected by Instagram.\n"
+                "Important: each code should be verified only once.\n"
+                "If you received the code on WhatsApp, choose WhatsApp in the app before submitting.\n"
+                "Tips:\n"
                 "• Enter the code immediately after receiving it\n"
                 "• Make sure no spaces or dashes\n"
                 f"• Code should be sent to {tfi.get('obfuscated_phone_number_2', 'your phone')}"

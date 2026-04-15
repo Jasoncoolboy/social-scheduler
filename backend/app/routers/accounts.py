@@ -37,6 +37,7 @@ class TwoFactorRequest(BaseModel):
     ig_username: str
     code: str
     flow_id: Optional[str] = None
+    method: Optional[str] = None
 
 
 @router.post("/login")
@@ -72,6 +73,7 @@ def instagram_two_factor(
         db=db,
         user_id=current_user.id,
         flow_id=data.flow_id,
+        method=data.method,
     )
     if result["status"] == "error":
         raise HTTPException(400, result["message"])
