@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 from app.database import get_db
 from app.models.user import User
@@ -15,6 +15,7 @@ from app.services.instagram_service import (
     logout_instagram,
     retry_after_challenge,
     submit_challenge_code,
+    submit_two_factor_code,
 )
 from app.dependencies import get_current_user
 
@@ -23,11 +24,19 @@ router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
 class RetryRequest(BaseModel):
     ig_username: str
+    flow_id: Optional[str] = None
 
 
 class ChallengeCodeRequest(BaseModel):
     ig_username: str
     code: str
+    flow_id: Optional[str] = None
+
+
+class TwoFactorRequest(BaseModel):
+    ig_username: str
+    code: str
+    flow_id: Optional[str] = None
 
 
 @router.post("/login")
@@ -48,18 +57,21 @@ def instagram_login(
 
 
 @router.post("/verify")
-def instagram_verify(
-    data: VerificationCodeRequest,
+def instagram_two_factor(
+    data: TwoFactorRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Submit 2FA code from authenticator app."""
-    result = login_instagram(
+    """
+    Submit 2FA code from authenticator app or SMS.
+    Uses the pending client stored during login attempt.
+    """
+    result = submit_two_factor_code(
         ig_username=data.ig_username,
-        ig_password="",
+        code=data.code,
         db=db,
         user_id=current_user.id,
-        verification_code=data.code,
+        flow_id=data.flow_id,
     )
     if result["status"] == "error":
         raise HTTPException(400, result["message"])
@@ -78,6 +90,7 @@ def submit_challenge(
         code=data.code,
         db=db,
         user_id=current_user.id,
+        flow_id=data.flow_id,
     )
     if result["status"] == "error":
         raise HTTPException(400, result["message"])
@@ -95,6 +108,7 @@ def retry_challenge(
         ig_username=data.ig_username,
         db=db,
         user_id=current_user.id,
+        flow_id=data.flow_id,
     )
     if result["status"] == "error":
         raise HTTPException(400, result["message"])

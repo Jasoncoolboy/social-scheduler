@@ -29,14 +29,20 @@ export default function Settings() {
   const [form, setForm]         = useState({ ig_username: "", ig_password: "" })
   const [showPw, setShowPw]     = useState(false)
   const [pendingUser, setPendingUser] = useState("")  // ig_username mid-flow
+  const [pendingFlowId, setPendingFlowId] = useState("")
   const [code, setCode]         = useState("")        // 2FA or challenge code
+  const [twoFaMethod, setTwoFaMethod] = useState("sms") // "sms" | "totp"
+  const [twoFaHint, setTwoFaHint]     = useState("") // Phone number or app name
 
   const reset = () => {
     setStep(STEP.NONE)
     setForm({ ig_username: "", ig_password: "" })
     setPendingUser("")
+    setPendingFlowId("")
     setCode("")
     setShowPw(false)
+    setTwoFaMethod("sms")   // ← add
+    setTwoFaHint("")        // ← add
   }
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -44,7 +50,6 @@ export default function Settings() {
     queryKey: ["accounts"],
     queryFn: listAccounts,
   })
-
   // ── Login ──────────────────────────────────────────────────────────────────
   const loginMutation = useMutation({
     mutationFn: () => loginInstagram(form),
@@ -59,10 +64,13 @@ export default function Settings() {
       // Save the username for next steps
       const username = res.ig_username || form.ig_username
       setPendingUser(username)
+      setPendingFlowId(res.flow_id || "")
 
       if (res.status === "two_factor_required") {
         setStep(STEP.TWO_FACTOR)
-        toast("Check your authenticator app or SMS", { icon: "🔐" })
+        setTwoFaMethod(res.method || "sms")
+        setTwoFaHint(res.phone_hint || "")
+        toast(res.message || "Enter your 2FA code", { icon: "🔐" })
         return
       }
 
@@ -85,7 +93,7 @@ export default function Settings() {
 
   // ── 2FA (authenticator app code) ───────────────────────────────────────────
   const twoFaMutation = useMutation({
-    mutationFn: () => verifyCode({ ig_username: pendingUser, code }),
+    mutationFn: () => verifyCode({ ig_username: pendingUser, code, flow_id: pendingFlowId }),
     onSuccess: (res) => {
       if (res.status === "success") {
         toast.success("Account connected!")
@@ -100,7 +108,7 @@ export default function Settings() {
 
   // ── Challenge code (SMS/email sent by Instagram) ───────────────────────────
   const challengeCodeMutation = useMutation({
-    mutationFn: () => submitChallengeCode({ ig_username: pendingUser, code }),
+    mutationFn: () => submitChallengeCode({ ig_username: pendingUser, code, flow_id: pendingFlowId }),
     onSuccess: (res) => {
       if (res.status === "success") {
         toast.success("Account connected!")
@@ -116,7 +124,7 @@ export default function Settings() {
 
   // ── Challenge approve (user taps approve in IG app) ────────────────────────
   const retryMutation = useMutation({
-    mutationFn: () => retryAfterChallenge(pendingUser),
+    mutationFn: () => retryAfterChallenge({ ig_username: pendingUser, flow_id: pendingFlowId }),
     onSuccess: (res) => {
       if (res.status === "success") {
         toast.success("Account connected!")
@@ -340,11 +348,20 @@ export default function Settings() {
             </button>
           </div>
 
-          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-            <p className="text-xs text-blue-700">
-              🔐 Enter the 6-digit code from your{" "}
-              <strong>authenticator app</strong> or{" "}
-              <strong>SMS</strong>.
+          {/* Dynamic hint based on 2FA method */}
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1">
+            <p className="text-xs font-medium text-blue-800">
+              {twoFaMethod === "totp"
+                ? " Open your authenticator app"
+                : " Check your SMS or WhatsApp"}
+            </p>
+            {twoFaHint && (
+              <p className="text-xs text-blue-600">
+                Code sent to: <span className="font-medium">{twoFaHint}</span>
+              </p>
+            )}
+            <p className="text-xs text-blue-500 mt-1">
+              Enter the code quickly — it expires in 30 seconds
             </p>
           </div>
 
@@ -378,6 +395,15 @@ export default function Settings() {
               Cancel
             </button>
           </div>
+
+          {/* Show error detail */}
+          {twoFaMutation.isError && (
+            <div className="bg-red-50 border border-red-100 rounded-lg p-3">
+              <p className="text-xs text-red-600">
+                {twoFaMutation.error?.response?.data?.detail || "Verification failed"}
+              </p>
+            </div>
+          )}
         </div>
       )}
 
